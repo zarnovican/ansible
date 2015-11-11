@@ -33,10 +33,6 @@ import struct
 import datetime
 import getpass
 import pwd
-import ConfigParser
-import StringIO
-
-from string import maketrans
 
 try:
     import selinux
@@ -241,7 +237,7 @@ class Facts(object):
                 # load raw ini
                 cp = ConfigParser.ConfigParser()
                 try:
-                    cp.readfp(StringIO.StringIO(out))
+                    cp.readfp(StringIO(out))
                 except ConfigParser.Error:
                     fact = "error loading fact - please check content"
                 else:
@@ -722,7 +718,7 @@ class Facts(object):
 
     def get_env_facts(self):
         self.facts['env'] = {}
-        for k,v in os.environ.iteritems():
+        for k,v in os.environ.items():
             self.facts['env'][k] = v
 
     def get_dns_facts(self):
@@ -942,9 +938,9 @@ class LinuxHardware(Hardware):
                 self.facts['processor_vcpus'] = i
             else:
                 self.facts['processor_count'] = sockets and len(sockets) or i
-                self.facts['processor_cores'] = sockets.values() and sockets.values()[0] or 1
+                self.facts['processor_cores'] = sockets.values() and list(sockets.values())[0] or 1
                 self.facts['processor_threads_per_core'] = ((cores.values() and
-                    cores.values()[0] or 1) / self.facts['processor_cores'])
+                    list(cores.values())[0] or 1) / self.facts['processor_cores'])
                 self.facts['processor_vcpus'] = (self.facts['processor_threads_per_core'] *
                     self.facts['processor_count'] * self.facts['processor_cores'])
 
@@ -1075,7 +1071,8 @@ class LinuxHardware(Hardware):
             sysfs_no_links = 0
             try:
                 path = os.readlink(os.path.join("/sys/block/", block))
-            except OSError, e:
+            except OSError:
+                e = get_exception()
                 if e.errno == errno.EINVAL:
                     path = block
                     sysfs_no_links = 1

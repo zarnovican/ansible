@@ -67,6 +67,14 @@ import platform
 import errno
 from itertools import repeat, chain
 
+PY2 = sys.version_info[0] == 2
+PY3 = sys.version_info[0] == 3
+
+if PY3:
+    binary_type = bytes
+else:
+    binary_type = str
+
 try:
     import syslog
     HAS_SYSLOG=True
@@ -111,6 +119,24 @@ else:
     # Python 2
     def iteritems(d):
         return d.iteritems()
+
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
+
+try:
+    import ConfigParser
+except ImportError:
+    import configparser as ConfigParser
+
+try:
+    from string import maketrans
+except ImportError:
+    maketrans = str.maketrans
+
+if PY3:
+    long = int
 
 try:
     NUMBERTYPES = (int, long, float)
@@ -1392,9 +1418,10 @@ class AnsibleModule(object):
                 log_args[param] = 'NOT_LOGGING_PASSWORD'
             else:
                 param_val = self.params[param]
+                #raise ValueError(str(type(param_val)))
                 if not isinstance(param_val, basestring):
                     param_val = str(param_val)
-                elif isinstance(param_val, unicode):
+                if PY2 and isinstance(param_val, unicode):
                     param_val = param_val.encode('utf-8')
                 log_args[param] = heuristic_log_sanitize(param_val, self.no_log_values)
 
@@ -1716,7 +1743,9 @@ class AnsibleModule(object):
         elif isinstance(args, basestring) and use_unsafe_shell:
             shell = True
         elif isinstance(args, basestring):
-            args = shlex.split(args.encode('utf-8'))
+            if PY2:
+                args = args.encode('utf-8')
+            args = shlex.split(args)
         else:
             msg = "Argument 'args' to run_command must be list or string"
             self.fail_json(rc=257, cmd=args, msg=msg)
@@ -1745,7 +1774,7 @@ class AnsibleModule(object):
         # in reporting later, which strips out things like
         # passwords from the args list
         if isinstance(args, basestring):
-            if isinstance(args, unicode):
+            if PY2 and isinstance(args, unicode):
                 b_args = args.encode('utf-8')
             else:
                 b_args = args
@@ -1814,8 +1843,8 @@ class AnsibleModule(object):
             # the communication logic here is essentially taken from that
             # of the _communicate() function in ssh.py
 
-            stdout = ''
-            stderr = ''
+            stdout = binary_type()
+            stderr = binary_type()
             rpipes = [cmd.stdout, cmd.stderr]
 
             if data:
