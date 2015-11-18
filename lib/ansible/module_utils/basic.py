@@ -67,6 +67,18 @@ import platform
 import errno
 from itertools import repeat, chain
 
+PY2 = sys.version_info[0] == 2
+PY3 = sys.version_info[0] == 3
+
+if PY3:
+    string_types = str,
+    text_type = str
+    binary_type = bytes
+else:
+    string_types = basestring,
+    text_type = unicode
+    binary_type = str
+
 try:
     import syslog
     HAS_SYSLOG=True
@@ -1713,10 +1725,13 @@ class AnsibleModule(object):
             if use_unsafe_shell:
                 args = " ".join([pipes.quote(x) for x in args])
                 shell = True
-        elif isinstance(args, basestring) and use_unsafe_shell:
+        elif isinstance(args, string_types) and use_unsafe_shell:
             shell = True
-        elif isinstance(args, basestring):
-            args = shlex.split(args.encode('utf-8'))
+        elif isinstance(args, string_types):
+            if PY2 and isinstance(args, text_type):
+                # Py2 shlex cannot handle unicode with non-ascii chars
+                args = args.encode('utf-8')
+            args = shlex.split(args)
         else:
             msg = "Argument 'args' to run_command must be list or string"
             self.fail_json(rc=257, cmd=args, msg=msg)
@@ -1744,11 +1759,11 @@ class AnsibleModule(object):
         # create a printable version of the command for use
         # in reporting later, which strips out things like
         # passwords from the args list
-        if isinstance(args, basestring):
-            if isinstance(args, unicode):
-                b_args = args.encode('utf-8')
-            else:
-                b_args = args
+        if isinstance(args, string_types):
+            b_args = args
+            if PY2 and isinstance(args, text_type):
+                # Py2 shlex cannot handle unicode with non-ascii chars
+                b_args = b_args.encode('utf-8')
             to_clean_args = shlex.split(b_args)
             del b_args
         else:
@@ -1814,8 +1829,8 @@ class AnsibleModule(object):
             # the communication logic here is essentially taken from that
             # of the _communicate() function in ssh.py
 
-            stdout = ''
-            stderr = ''
+            stdout = binary_type()
+            stderr = binary_type()
             rpipes = [cmd.stdout, cmd.stderr]
 
             if data:
@@ -1829,17 +1844,20 @@ class AnsibleModule(object):
                 if cmd.stdout in rfd:
                     dat = os.read(cmd.stdout.fileno(), 9000)
                     stdout += dat
-                    if dat == '':
+                    if len(dat) == 0:
                         rpipes.remove(cmd.stdout)
                 if cmd.stderr in rfd:
                     dat = os.read(cmd.stderr.fileno(), 9000)
                     stderr += dat
-                    if dat == '':
+                    if len(dat) == 0:
                         rpipes.remove(cmd.stderr)
                 # if we're checking for prompts, do it now
-                if prompt_re:
-                    if prompt_re.search(stdout) and not data:
-                        return (257, stdout, "A prompt was encountered while running a command, but no input data was specified")
+                if prompt_re and not data:
+                    text_stdout = stdout
+                    if PY3:
+                        text_stdout = text_stdout.decode(locale.getpreferredencoding(False))
+                    if prompt_re.search(text_stdout):
+                        return (257, text_stdout, "A prompt was encountered while running a command, but no input data was specified")
                 # only break out if no pipes are left to read or
                 # the pipes are completely read and
                 # the process is terminated
@@ -1856,6 +1874,10 @@ class AnsibleModule(object):
 
             cmd.stdout.close()
             cmd.stderr.close()
+
+            if PY3:
+                stdout = stdout.decode(locale.getpreferredencoding(False))
+                stderr = stderr.decode(locale.getpreferredencoding(False))
 
             rc = cmd.returncode
         except (OSError, IOError):
