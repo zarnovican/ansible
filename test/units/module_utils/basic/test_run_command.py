@@ -89,30 +89,66 @@ class TestAnsibleModuleRunCommand(unittest.TestCase):
 
         self.addCleanup(patch.stopall)
 
-    def test_list_as_args(self):
+    def test_args_list(self):
         self.module.run_command(['/bin/ls', 'a', ' b', 'c '])
         self.assertTrue(self.subprocess.Popen.called)
         args, kwargs = self.subprocess.Popen.call_args
         self.assertEqual(args, (['/bin/ls', 'a', ' b', 'c '], ))
         self.assertEqual(kwargs['shell'], False)
 
-    def test_str_as_args(self):
+    def test_args_nonascii_list_with_shell(self):
+        self.module.run_command(['/bin/ls', 'č '], use_unsafe_shell=True)
+        self.assertTrue(self.subprocess.Popen.called)
+        args, kwargs = self.subprocess.Popen.call_args
+        self.assertEqual(args, ("/bin/ls 'č '", ))
+        self.assertEqual(kwargs['shell'], True)
+
+    def test_args_str(self):
         self.module.run_command('/bin/ls a " b" "c "')
         self.assertTrue(self.subprocess.Popen.called)
         args, kwargs = self.subprocess.Popen.call_args
         self.assertEqual(args, (['/bin/ls', 'a', ' b', 'c '], ))
         self.assertEqual(kwargs['shell'], False)
 
-    def test_tuple_as_args(self):
-        self.assertRaises(SystemExit, self.module.run_command, ('ls', '/'))
-        self.assertTrue(self.module.fail_json.called)
-
-    def test_unsafe_shell(self):
+    def test_args_str_with_shell(self):
         self.module.run_command('ls a " b" "c "', use_unsafe_shell=True)
         self.assertTrue(self.subprocess.Popen.called)
         args, kwargs = self.subprocess.Popen.call_args
         self.assertEqual(args, ('ls a " b" "c "', ))
         self.assertEqual(kwargs['shell'], True)
+
+    def test_args_nonascii_str_with_shell(self):
+        self.module.run_command('/bin/ls "č " ψ', use_unsafe_shell=True)
+        self.assertTrue(self.subprocess.Popen.called)
+        args, kwargs = self.subprocess.Popen.call_args
+        self.assertEqual(args, ('/bin/ls "č " ψ', ))
+        self.assertEqual(kwargs['shell'], True)
+
+    def test_args_tuple(self):
+        self.assertRaises(SystemExit, self.module.run_command, ('ls', '/'))
+        self.assertTrue(self.module.fail_json.called)
+
+    def test_password_as_arg(self):
+        self.cmd.returncode = 7
+        self.assertRaises(SystemExit, self.module.run_command, 'foo --passwd secret', check_rc=True)
+        self.assertTrue(self.subprocess.Popen.called)
+        args, kwargs = self.subprocess.Popen.call_args
+        self.assertEqual(args, (['foo', '--passwd', 'secret'], ))
+        self.assertTrue(self.module.fail_json.called)
+        args, kwargs = self.module.fail_json.call_args
+        self.assertEqual(kwargs['rc'], 7)
+        self.assertEqual(kwargs['cmd'], "foo --passwd '********'")
+
+    def test_password_as_arg2(self):
+        self.cmd.returncode = 7
+        self.assertRaises(SystemExit, self.module.run_command, 'foo passwd=secret', check_rc=True)
+        self.assertTrue(self.subprocess.Popen.called)
+        args, kwargs = self.subprocess.Popen.call_args
+        self.assertEqual(args, (['foo', 'passwd=secret'], ))
+        self.assertTrue(self.module.fail_json.called)
+        args, kwargs = self.module.fail_json.call_args
+        self.assertEqual(kwargs['rc'], 7)
+        self.assertEqual(kwargs['cmd'], "foo 'passwd=********'")
 
     def test_path_prefix(self):
         self.module.run_command('foo', path_prefix='/opt/bin')
@@ -177,6 +213,6 @@ class TestAnsibleModuleRunCommand(unittest.TestCase):
         self.cmd_out[sentinel.stderr] = BytesIO(u'لرئيسية'.encode('utf-8'))
         (rc, stdout, stderr) = self.module.run_command('/bin/something_ugly')
         self.assertEqual(rc, 0)
-        self.assertEqual(stdout.decode('utf-8'), u'Žarn§')
-        self.assertEqual(stderr.decode('utf-8'), u'لرئيسية')
+        self.assertEqual(stdout, 'Žarn§')
+        self.assertEqual(stderr, 'لرئيسية')
 
