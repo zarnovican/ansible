@@ -60,9 +60,12 @@ class TestAnsibleModuleRunCommand(unittest.TestCase):
             if path == '/inaccessible':
                 raise OSError(errno.EPERM, "Permission denied: '/inaccessible'")
 
+        def mock_fail_json(**kwargs):
+            raise SystemExit(kwargs.get('msg', ''))
+
         basic.MODULE_COMPLEX_ARGS = '{}'
         self.module = AnsibleModule(argument_spec=dict())
-        self.module.fail_json = MagicMock(side_effect=SystemExit)
+        self.module.fail_json = MagicMock(side_effect=mock_fail_json)
 
         self.os = patch('ansible.module_utils.basic.os').start()
         self.os.path.expandvars.side_effect = lambda x: x
